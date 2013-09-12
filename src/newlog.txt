@@ -1,4 +1,0 @@
-Opening /PHANTOM^XVItest -HFS^^^/Plan_1.0:Plan_1:FFS/(null)/00000.dcm
-Opening /PHANTOM^XVItest -HFS^^^/Plan_1.0:Plan_1:FFS/(null)/00000.dcm
-Opening /PHANTOM^XVItest -HFS^^^/Plan_1.0:Plan_1:FFS/(null)/00000.dcm
-Opening /PHANTOM^XVItest -HFS^^^/Plan_1.0:Plan_1:FFS/(null)/00000.dcm
