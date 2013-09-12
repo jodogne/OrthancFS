@@ -1,0 +1,22 @@
+In file included from orthancfs.cpp:1:
+In file included from ./../include/orthancfs.h:4:
+In file included from /usr/include/fuse.h:9:
+In file included from /usr/include/fuse/fuse.h:26:
+/usr/include/fuse/fuse_common.h:33:2: error: #error Please add -D_FILE_OFFSET_BITS=64 to your compile flags!
+#error Please add -D_FILE_OFFSET_BITS=64 to your compile flags!
+ ^
+In file included from orthancfs.cpp:3:
+In file included from ./../include/orthanc_hash.h:3:
+In file included from /usr/include/uthash.h:64:
+/usr/include/inttypes.h:274:1: error: expected unqualified-id
+__BEGIN_DECLS
+^
+/usr/include/x86_64-linux-gnu/sys/cdefs.h:90:31: note: expanded from:
+# define __BEGIN_DECLS  extern "C" {
+                               ^
+In file included from orthancfs.cpp:3:
+In file included from ./../include/orthanc_hash.h:3:
+/usr/include/uthash.h:862:4: error: unknown type name 'UT_hash_bucket'
+   UT_hash_bucket *buckets;
+   ^
+3 errors generated.
