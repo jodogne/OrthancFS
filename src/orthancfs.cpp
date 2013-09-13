@@ -8,15 +8,10 @@
 
 /*
 	TODO:
-		- Add user id to files and repositories
-		- Is it possible to directly ask a read-only mode
-		- nautilus seems to add repositories and files (.Trash, .hidden,...)
-		- name simplification for compatibility with slicer
-		
+		- speed problem
+		- name simplification for compatibility with slicer?		
 */
 using namespace std;
-
-ofstream myfile;
 
 /**
 	Get the type of the path given.
@@ -153,11 +148,11 @@ int OrthancFS::get_o_iid(const char * path){
 		3) check the read/write rights
 */
 int OrthancFS::getAttr(const char *path, struct stat *stbuf){
-	myfile << "getattr:" << path << endl;
 	int type = get_ofs_type(path);
 	int p_index,st_index,se_index,i_index;
 	char * p_name,*st_name,*se_name;
 	memset(stbuf, 0, sizeof(struct stat));
+	
 	stbuf->st_uid = getuid();
 	stbuf->st_gid = getgid();
 	if(type==OFS_ROOT){
@@ -166,11 +161,7 @@ int OrthancFS::getAttr(const char *path, struct stat *stbuf){
 	}
 	else if(type==OFS_PATIENT){
 		if(map_patient.find(path)==map_patient.end()){
-			myfile << "notfound: " << path << endl;
 			return -ENOENT;
-		}
-		else{
-			myfile << "found: " << path << endl;
 		}
 		p_index = get_o_pid(path);
 		OrthancClient::Patient patient = orthanc->GetPatient(p_index);
@@ -179,11 +170,7 @@ int OrthancFS::getAttr(const char *path, struct stat *stbuf){
 	}
 	else if(type==OFS_STUDY){
 		if(map_study.find(path)==map_study.end()){
-			myfile << "notfound: " << path << endl;
 			return -ENOENT;
-		}
-		else{
-			myfile << "found: " << path << endl;
 		}
 		p_name = get_patient(path);
 		p_index = get_o_pid(p_name);
@@ -196,11 +183,7 @@ int OrthancFS::getAttr(const char *path, struct stat *stbuf){
 	}
 	else if(type==OFS_SERIES){
 		if(map_series.find(path)==map_series.end()){
-			myfile << "notfound: " << path << endl;
 			return -ENOENT;
-		}
-		else{
-			myfile << "found: " << path << endl;
 		}
 		p_name = get_patient(path);
 		st_name = get_study(path);
@@ -217,11 +200,7 @@ int OrthancFS::getAttr(const char *path, struct stat *stbuf){
 	}
 	else if(type==OFS_INSTANCE){
 		if(map_instance.find(path)==map_instance.end()){
-			myfile << "notfound: " << path << endl;
 			return -ENOENT;
-		}
-		else{
-			myfile << "found: " << path << endl;
 		}
 		p_name = get_patient(path);
 		st_name = get_study(path);
@@ -251,9 +230,9 @@ int OrthancFS::getAttr(const char *path, struct stat *stbuf){
 	TODO
 		Not use this horror!
 */
-bool trash(const char * path){
+/*bool trash(const char * path){
 	return (path[0]=='/' && path[1] == '.' && (path[2] =='T' || path[2] == 't'));
-}
+}*/
 
 /**
 	The goal of this function is to fill buf with the strings of the repositories
@@ -270,16 +249,16 @@ bool trash(const char * path){
 	@RETURN: 0 if this is an orthanc directory, (TODO error otherwise)
 */
 int OrthancFS::readDir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi){
-	myfile << "readdir:" << path << endl;
 	int type = get_ofs_type(path);
+	if(type==OFS_INSTANCE){
+		return -ENOTDIR;
+	}
 	int i,j,n,p_id,st_id,se_id;
 	string st,cur;
 	stringstream ss;
 	char * p, *stu,*ser;
 	filler(buf,".",NULL,0);
 	filler(buf,"..",NULL,0);
-	if(trash(path))return 0;
-//	myfile << "readdir!:" << path << endl;
 	j=1;
 	if(type==OFS_ROOT){
 		orthanc->Refresh();
@@ -300,6 +279,9 @@ int OrthancFS::readDir(const char *path, void *buf, fuse_fill_dir_t filler, off_
 		}
 	}
 	else if(type==OFS_PATIENT){
+		if(map_patient.find(path)==map_patient.end()){
+			return -ENOENT;
+		}
 		map_study.clear();
 		p = get_patient(path);
 		p_id = get_o_pid(p);
@@ -318,13 +300,15 @@ int OrthancFS::readDir(const char *path, void *buf, fuse_fill_dir_t filler, off_
 				cur = st + " (" + ss.str() +")";
 				j++;
 			}
-			myfile << "study: " << pat_string+cur << endl;
 			map_study[pat_string+cur]=i;
 			filler(buf,cur.c_str(),NULL,0);
 		}
 		free(p);
 	}
 	else if(type==OFS_STUDY){
+		if(map_study.find(path)==map_study.end()){
+			return -ENOENT;
+		}
 		map_series.clear();
 		p = get_patient(path);
 		p_id = get_o_pid(p);
@@ -353,6 +337,9 @@ int OrthancFS::readDir(const char *path, void *buf, fuse_fill_dir_t filler, off_
 		free(stu);
 	}
 	else if(type==OFS_SERIES){
+		if(map_series.find(path)==map_series.end()){
+			return -ENOENT;
+		}
 		map_instance.clear();
 		p = get_patient(path);
 		p_id = get_o_pid(p);
@@ -382,10 +369,12 @@ int OrthancFS::readDir(const char *path, void *buf, fuse_fill_dir_t filler, off_
 }
 
 /**
-	Open a file.
-	@PRE: The path is a valid orthanc path. TODO: this is not a good idea
-	@POST: \
-	@RETURN: 0
+	Check if the file can be opened.
+	@PRE:\
+	@POST: if the repository is not on the hashmap, it does not come from
+	orthanc so it can not be opened.
+	@RETURN: -ENOENT if the file does not exist
+			 0 if it does
 */
 int OrthancFS::open(const char *path, struct fuse_file_info *fi){
 	int type = get_ofs_type(path);
@@ -412,20 +401,18 @@ int OrthancFS::open(const char *path, struct fuse_file_info *fi){
 
 /**
 	Read a file.
-	@PRE: for now it is assumed we only have valid orthanc files. TODO this is
-	not smart.
+	@PRE: \
 	@POST: buf is filled with size octets of data of path
 	@RETURN: size if it was possible to fill buf with size octets
 			 0 if it was not possible to read anything
 			 or the amo data loaded in buf
 */
 int OrthancFS::read(const char *path, char *buf, size_t size, off_t offset,struct fuse_file_info *fi){
-	//myfile << path;
 	int type = get_ofs_type(path);
-	if(type!=OFS_ROOT){
+	if(type!=OFS_INSTANCE){
 		return -EISDIR;
 	}
-	else if(type==OFS_INSTANCE){
+	else{
 		if(map_instance.find(path)==map_instance.end())return -EBADF;
 	}
 	char * pat = get_patient(path);
@@ -443,7 +430,6 @@ int OrthancFS::read(const char *path, char *buf, size_t size, off_t offset,struc
 	
 	char * buffer = (char*) o_ins.GetDicom();
 	size_t len = o_ins.GetDicomSize();
-	//myfile << "Offset : " << (unsigned int)offset << ", Size:" << (unsigned int)size << ", len:" << path << endl;
 	if((unsigned int)offset<(unsigned int)len){
 		if(offset+size>len)
 			size = len-offset;
@@ -459,33 +445,64 @@ int OrthancFS::read(const char *path, char *buf, size_t size, off_t offset,struc
 	return size;
 }
 
+int OrthancFS::access(const char * path, int mode){
+	int type = get_ofs_type(path);
+	
+	if(mode==2 || mode==6 || mode==3)
+		return -EACCES;
+	if(type==OFS_ROOT)
+		return 0;
+	else if(type==OFS_PATIENT){
+		if(map_patient.find(path)==map_patient.end())
+			return -ENOENT;
+		return 0;
+	}
+	else if(type==OFS_STUDY){
+		if(map_study.find(path)==map_study.end())
+			return -ENOENT;
+		return 0;
+	}
+	else if(type==OFS_SERIES){
+		if(map_series.find(path)==map_series.end())
+			return -ENOENT;
+		return 0;
+	}
+	else if(type==OFS_INSTANCE){
+		if(map_instance.find(path)==map_instance.end())
+			return -ENOENT;
+		return 0;
+	}
+	return -ENOENT;
+}
+
 
 /**
 	C-like functions to call the OrthancFS object in the structure. Not sexy
 	but working!
 */
 int ofs_getAttr(const char *path, struct stat *stbuf){
-	//myfile << "ofs_getAttr\n";
 	OrthancFS * ofesse = OFS_DATA->ofs;
 	return ofesse->getAttr(path,stbuf);
 }
 
 int ofs_readDir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi){
-	//myfile << "ofs_readDir\n";
 	OrthancFS * ofesse = OFS_DATA->ofs;
 	return ofesse->readDir(path,buf,filler,offset,fi);
 }
 
 int ofs_open(const char *path, struct fuse_file_info *fi){
-	//myfile << "ofs_open\n";
 	OrthancFS * ofesse = OFS_DATA->ofs;
 	return ofesse->open(path,fi);
 }
 
 int ofs_read(const char *path, char *buf, size_t size, off_t offset,struct fuse_file_info *fi){
-	//myfile << "ofs_read\n";
 	OrthancFS * ofesse = OFS_DATA->ofs;
 	return ofesse->read(path,buf,size,offset,fi);
+}
+
+int ofs_access(const char * path, int mode){
+	OrthancFS * ofesse = OFS_DATA->ofs;
+	return ofesse->access(path,mode);
 }
 
 /**
@@ -500,6 +517,7 @@ struct hello_fuse_operations:fuse_operations
         readdir    = ofs_readDir;
         open       = ofs_open;
         read       = ofs_read;
+        access     = ofs_access;
     }
 };
 
@@ -514,7 +532,6 @@ void ofs_usage(char * l){
 
 int main(int argc, char *argv[]){
 	OrthancFS * ofes = NULL;
-	myfile.open("newlog.txt");
 	int fuse_stat;
 	if ((getuid() == 0) || (geteuid() == 0)) {
 		fprintf(stderr, "Running OrthancFS as root opens unnacceptable security holes\n");
@@ -535,9 +552,7 @@ int main(int argc, char *argv[]){
   		return EXIT_SUCCESS;
   	}
   	
-  	argv[argc-2] = argv[argc-1];
-  	argv[argc-1] = NULL;
-  	argc--;
+  	argv[argc-2] = (char*)"-s";
   	
 	struct ofs_state * ostate = (struct ofs_state*) malloc(sizeof(struct ofs_state));
 	if(ostate==NULL){
@@ -549,7 +564,6 @@ int main(int argc, char *argv[]){
 	fuse_stat = fuse_main(argc, argv, &hello_oper, ostate);
 	
 	delete ofes;
-	myfile.close();
 	free(ostate);
 	return fuse_stat;
 }
