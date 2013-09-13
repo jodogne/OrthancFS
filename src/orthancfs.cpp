@@ -153,32 +153,55 @@ int OrthancFS::get_o_iid(const char * path){
 		3) check the read/write rights
 */
 int OrthancFS::getAttr(const char *path, struct stat *stbuf){
-	//myfile << path << endl;
+	myfile << "getattr:" << path << endl;
 	int type = get_ofs_type(path);
 	int p_index,st_index,se_index,i_index;
 	char * p_name,*st_name,*se_name;
 	memset(stbuf, 0, sizeof(struct stat));
+	stbuf->st_uid = getuid();
+	stbuf->st_gid = getgid();
 	if(type==OFS_ROOT){
-		stbuf->st_mode = S_IFDIR | 0755;
+		stbuf->st_mode = S_IFDIR | 0444;
 		stbuf->st_nlink = orthanc->GetPatientCount()+2;
 	}
 	else if(type==OFS_PATIENT){
+		if(map_patient.find(path)==map_patient.end()){
+			myfile << "notfound: " << path << endl;
+			return -ENOENT;
+		}
+		else{
+			myfile << "found: " << path << endl;
+		}
 		p_index = get_o_pid(path);
 		OrthancClient::Patient patient = orthanc->GetPatient(p_index);
-		stbuf->st_mode = S_IFDIR | 0755;
+		stbuf->st_mode = S_IFDIR | 0444;
 		stbuf->st_nlink = patient.GetStudyCount()+2;
 	}
 	else if(type==OFS_STUDY){
+		if(map_study.find(path)==map_study.end()){
+			myfile << "notfound: " << path << endl;
+			return -ENOENT;
+		}
+		else{
+			myfile << "found: " << path << endl;
+		}
 		p_name = get_patient(path);
 		p_index = get_o_pid(p_name);
 		OrthancClient::Patient patient = orthanc->GetPatient(p_index);
 		st_index = get_o_stid(path);
 		OrthancClient::Study study = patient.GetStudy(st_index);
-		stbuf->st_mode = S_IFDIR | 0755;
+		stbuf->st_mode = S_IFDIR | 0444;
 		stbuf->st_nlink = study.GetSeriesCount()+2;
 		free(p_name);
 	}
 	else if(type==OFS_SERIES){
+		if(map_series.find(path)==map_series.end()){
+			myfile << "notfound: " << path << endl;
+			return -ENOENT;
+		}
+		else{
+			myfile << "found: " << path << endl;
+		}
 		p_name = get_patient(path);
 		st_name = get_study(path);
 		p_index = get_o_pid(p_name);
@@ -187,12 +210,19 @@ int OrthancFS::getAttr(const char *path, struct stat *stbuf){
 		OrthancClient::Patient patient = orthanc->GetPatient(p_index);
 		OrthancClient::Study study = patient.GetStudy(st_index);
 		OrthancClient::Series series = study.GetSeries(st_index);
-		stbuf->st_mode = S_IFDIR | 0755;
+		stbuf->st_mode = S_IFDIR | 0444;
 		stbuf->st_nlink = series.GetInstanceCount()+2;
 		free(p_name);
 		free(st_name);
 	}
 	else if(type==OFS_INSTANCE){
+		if(map_instance.find(path)==map_instance.end()){
+			myfile << "notfound: " << path << endl;
+			return -ENOENT;
+		}
+		else{
+			myfile << "found: " << path << endl;
+		}
 		p_name = get_patient(path);
 		st_name = get_study(path);
 		se_name = get_series(path);
@@ -240,6 +270,7 @@ bool trash(const char * path){
 	@RETURN: 0 if this is an orthanc directory, (TODO error otherwise)
 */
 int OrthancFS::readDir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi){
+	myfile << "readdir:" << path << endl;
 	int type = get_ofs_type(path);
 	int i,j,n,p_id,st_id,se_id;
 	string st,cur;
@@ -273,7 +304,7 @@ int OrthancFS::readDir(const char *path, void *buf, fuse_fill_dir_t filler, off_
 		p_id = get_o_pid(p);
 		OrthancClient::Patient pat = orthanc->GetPatient(p_id);
 		n = pat.GetStudyCount();
-		string pat_string = string(path);
+		string pat_string = string(path)+"/";
 		string cur;
 		for(i=0;i<n;i++){
 			OrthancClient::Study stu = pat.GetStudy(i);
@@ -285,6 +316,7 @@ int OrthancFS::readDir(const char *path, void *buf, fuse_fill_dir_t filler, off_
 				cur = st + " (" + ss.str() +")";
 				j++;
 			}
+			myfile << "study: " << pat_string+cur << endl;
 			map_study[pat_string+cur]=i;
 			filler(buf,cur.c_str(),NULL,0);
 		}
@@ -299,7 +331,7 @@ int OrthancFS::readDir(const char *path, void *buf, fuse_fill_dir_t filler, off_
 		OrthancClient::Patient pat = orthanc->GetPatient(p_id);
 		OrthancClient::Study stud = pat.GetStudy(st_id);
 		n = stud.GetSeriesCount();
-		string pat_string = string(path);
+		string pat_string = string(path)+"/";
 		string cur;
 		for(i=0;i<n;i++){
 			OrthancClient::Series ser = stud.GetSeries(i);
@@ -329,7 +361,7 @@ int OrthancFS::readDir(const char *path, void *buf, fuse_fill_dir_t filler, off_
 		OrthancClient::Study stud = pat.GetStudy(st_id);
 		OrthancClient::Series series = stud.GetSeries(se_id);
 		n = series.GetInstanceCount();
-		string pat_string = string(path);
+		string pat_string = string(path)+"/";
 		string cur;
 		for(i=0;i<n;i++){
 			OrthancClient::Instance ins = series.GetInstance(i);
@@ -352,7 +384,7 @@ int OrthancFS::readDir(const char *path, void *buf, fuse_fill_dir_t filler, off_
 	@RETURN: 0
 */
 int OrthancFS::open(const char *path, struct fuse_file_info *fi){
-	myfile << "Opening " << path << endl;
+	//myfile << "Opening " << path << endl;
 	return 0;	
 }
 
