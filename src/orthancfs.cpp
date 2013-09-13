@@ -282,6 +282,7 @@ int OrthancFS::readDir(const char *path, void *buf, fuse_fill_dir_t filler, off_
 //	myfile << "readdir!:" << path << endl;
 	j=1;
 	if(type==OFS_ROOT){
+		orthanc->Refresh();
 		n = orthanc->GetPatientCount();
 		map_patient.clear();
 		for(i=0;i<n;i++){
@@ -303,6 +304,7 @@ int OrthancFS::readDir(const char *path, void *buf, fuse_fill_dir_t filler, off_
 		p = get_patient(path);
 		p_id = get_o_pid(p);
 		OrthancClient::Patient pat = orthanc->GetPatient(p_id);
+		pat.Reload();
 		n = pat.GetStudyCount();
 		string pat_string = string(path)+"/";
 		string cur;
@@ -330,6 +332,7 @@ int OrthancFS::readDir(const char *path, void *buf, fuse_fill_dir_t filler, off_
 		st_id = get_o_stid(stu);
 		OrthancClient::Patient pat = orthanc->GetPatient(p_id);
 		OrthancClient::Study stud = pat.GetStudy(st_id);
+		stud.Reload();
 		n = stud.GetSeriesCount();
 		string pat_string = string(path)+"/";
 		string cur;
@@ -360,6 +363,7 @@ int OrthancFS::readDir(const char *path, void *buf, fuse_fill_dir_t filler, off_
 		OrthancClient::Patient pat = orthanc->GetPatient(p_id);
 		OrthancClient::Study stud = pat.GetStudy(st_id);
 		OrthancClient::Series series = stud.GetSeries(se_id);
+		series.Reload();
 		n = series.GetInstanceCount();
 		string pat_string = string(path)+"/";
 		string cur;
@@ -384,7 +388,24 @@ int OrthancFS::readDir(const char *path, void *buf, fuse_fill_dir_t filler, off_
 	@RETURN: 0
 */
 int OrthancFS::open(const char *path, struct fuse_file_info *fi){
-	//myfile << "Opening " << path << endl;
+	int type = get_ofs_type(path);
+	if(type==OFS_ROOT)return 0;
+	else if(type==OFS_PATIENT){
+		if(map_patient.find(path)!=map_patient.end())return 0;
+		else return -ENOENT;
+	}
+	else if(type==OFS_STUDY){
+		if(map_study.find(path)!= map_study.end())return 0;
+		else return -ENOENT;
+	}
+	else if(type==OFS_SERIES){
+		if(map_study.find(path)!=map_series.end())return 0;
+		else return -ENOENT;
+	}
+	else if(type==OFS_INSTANCE){
+		if(map_instance.find(path)!=map_instance.end())return 0;
+		else return -ENOENT;
+	}
 	return 0;	
 }
 
@@ -400,7 +421,13 @@ int OrthancFS::open(const char *path, struct fuse_file_info *fi){
 */
 int OrthancFS::read(const char *path, char *buf, size_t size, off_t offset,struct fuse_file_info *fi){
 	//myfile << path;
-	if(trash(path))return 0;
+	int type = get_ofs_type(path);
+	if(type!=OFS_ROOT){
+		return -EISDIR;
+	}
+	else if(type==OFS_INSTANCE){
+		if(map_instance.find(path)==map_instance.end())return -EBADF;
+	}
 	char * pat = get_patient(path);
 	char * stu = get_study(path);
 	char * ser = get_series(path);
