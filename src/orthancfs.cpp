@@ -552,7 +552,7 @@ int main(int argc, char *argv[]){
   		return EXIT_SUCCESS;
   	}
   	
-  	argv[argc-2] = (char*)"-s";
+  	argv[1] = (char*)"-s";
   	
 	struct ofs_state * ostate = (struct ofs_state*) malloc(sizeof(struct ofs_state));
 	if(ostate==NULL){
