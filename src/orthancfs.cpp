@@ -509,9 +509,9 @@ int ofs_access(const char * path, int mode){
 	Core structure.
 	TODO Check if other functions could be interesting
 */
-struct hello_fuse_operations:fuse_operations
+struct ofs_fuse_operations:fuse_operations
 {
-    hello_fuse_operations ()
+    ofs_fuse_operations ()
     {
         getattr    = ofs_getAttr;
         readdir    = ofs_readDir;
@@ -521,7 +521,7 @@ struct hello_fuse_operations:fuse_operations
     }
 };
 
-static struct hello_fuse_operations hello_oper;
+static struct ofs_fuse_operations ofs_oper;
 
 void ofs_usage(char * l){
 	cout << "OrthancFS should be used like this:" << endl;
@@ -561,7 +561,7 @@ int main(int argc, char *argv[]){
 	}
 	
 	ostate->ofs = ofes; 
-	fuse_stat = fuse_main(argc, argv, &hello_oper, ostate);
+	fuse_stat = fuse_main(argc, argv, &ofs_oper, ostate);
 	
 	delete ofes;
 	free(ostate);
